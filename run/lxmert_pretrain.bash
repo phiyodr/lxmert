@@ -1,5 +1,5 @@
 # The name of experiment
-name=lxmert
+name=lxmert08Jan2021
 
 # Create dirs and make backup
 output=snap/pretrain/$name
