@@ -70,15 +70,24 @@ def convert_sents_to_features(sents, max_seq_length, tokenizer):
                               segment_ids=segment_ids))
     return features
 
-
+def set_weight(weight = 1/0.15):
+    for ltype in VISUAL_CONFIG.VISUAL_LOSSES:
+        tmp = list(VISUAL_CONFIG.visual_loss_config[ltype])
+        tmp[3]  = weight
+        VISUAL_CONFIG.visual_loss_config[ltype] = tuple(tmp)
+    
+    
 def set_visual_config(args):
     VISUAL_CONFIG.l_layers = args.llayers
     VISUAL_CONFIG.x_layers = args.xlayers
     VISUAL_CONFIG.r_layers = args.rlayers
-
+    # Default is None
+    VISUAL_CONFIG.visual_pos_dim = args.visual_pos_dim
+    set_weight(args.visual_weights)
+    print(VISUAL_CONFIG.visual_loss_config)
 
 class LXRTEncoder(nn.Module):
-    def __init__(self, args, max_seq_length, mode='x'):
+    def __init__(self, args, max_seq_length, mode='x', visual_pos_dim=4):
         super().__init__()
         self.max_seq_length = max_seq_length
         set_visual_config(args)
@@ -92,7 +101,7 @@ class LXRTEncoder(nn.Module):
         # Build LXRT Model
         self.model = VisualBertForLXRFeature.from_pretrained(
             "bert-base-uncased",
-            mode=mode
+            mode=mode, visual_pos_dim=visual_pos_dim
         )
 
         if args.from_scratch:

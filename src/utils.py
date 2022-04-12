@@ -9,11 +9,20 @@ import time
 import numpy as np
 
 csv.field_size_limit(sys.maxsize)
+# FIELDNAMES differ for depth version
 FIELDNAMES = ["img_id", "img_h", "img_w", "objects_id", "objects_conf",
               "attrs_id", "attrs_conf", "num_boxes", "boxes", "features"]
+import pickle
 
+def load_obj_pkl(fname):
+    start_time = time.time()
+    with open(fname, 'rb') as f:
+        data = pickle.load(f)
+    elapsed_time = time.time() - start_time
+    print("Loaded %d images in file %s in %d seconds." % (len(data), fname, elapsed_time))
+    return data
 
-def load_obj_tsv(fname, topk=None):
+def load_obj_tsv(fname, topk=None, depth_area_cols=False):
     """Load object features from tsv file.
 
     :param fname: The path to the tsv file.
@@ -22,6 +31,7 @@ def load_obj_tsv(fname, topk=None):
     :return: A list of image object features where each feature is a dict.
         See FILENAMES above for the keys in the feature dict.
     """
+
     data = []
     start_time = time.time()
     print("Start to load Faster-RCNN detected objects from %s" % fname)
@@ -39,8 +49,10 @@ def load_obj_tsv(fname, topk=None):
                 ('attrs_id', (boxes, ), np.int64),
                 ('attrs_conf', (boxes, ), np.float32),
                 ('boxes', (boxes, 4), np.float32),
-                ('features', (boxes, -1), np.float32),
+                ('features', (boxes, -1), np.float32)
             ]
+
+                
             for key, shape, dtype in decode_config:
                 item[key] = np.frombuffer(base64.b64decode(item[key]), dtype=dtype)
                 item[key] = item[key].reshape(shape)

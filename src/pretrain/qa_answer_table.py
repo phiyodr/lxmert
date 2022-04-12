@@ -81,7 +81,7 @@ class AnswerTable:
         return len(self.anss)
 
 
-def load_lxmert_qa(path, model, label2ans):
+def load_lxmert_qa(path, model, label2ans, qa_with_dropout=False):
     """
     Load model weights from LXMERT pre-training.
     The answers in the fine-tuned QA task (indicated by label2ans)
@@ -112,14 +112,23 @@ def load_lxmert_qa(path, model, label2ans):
     answer_state_dict = {}
     for key, value in loaded_state_dict.items():
         if key.startswith("answer_head."):
+            print(f"Load key={key} with value.shape={value.shape}")
             answer_state_dict[key.replace('answer_head.', '')] = value
 
     # Do surgery on answer state dict
-    ans_weight = answer_state_dict['logit_fc.3.weight']
-    ans_bias = answer_state_dict['logit_fc.3.bias']
-    import copy
-    new_answer_weight = copy.deepcopy(model_state_dict['logit_fc.3.weight'])
-    new_answer_bias = copy.deepcopy(model_state_dict['logit_fc.3.bias'])
+    if qa_with_dropout:
+        ans_weight = answer_state_dict['logit_fc.5.weight']
+        ans_bias = answer_state_dict['logit_fc.5.bias']
+        import copy
+        new_answer_weight = copy.deepcopy(model_state_dict['logit_fc.5.weight'])
+        new_answer_bias = copy.deepcopy(model_state_dict['logit_fc.5.bias'])
+    else:
+        ans_weight = answer_state_dict['logit_fc.3.weight']
+        ans_bias = answer_state_dict['logit_fc.3.bias']
+        import copy
+        new_answer_weight = copy.deepcopy(model_state_dict['logit_fc.3.weight'])
+        new_answer_bias = copy.deepcopy(model_state_dict['logit_fc.3.bias'])
+    
     answer_table = AnswerTable()
     loaded = 0
     unload = 0
@@ -128,6 +137,7 @@ def load_lxmert_qa(path, model, label2ans):
     for label, ans in label2ans.items():
         new_ans = answer_table.convert_ans(ans)
         if answer_table.used(new_ans):
+            #import pdb; pdb.set_trace()
             ans_id_9500 = answer_table.ans2id(new_ans)
             new_answer_weight[label] = ans_weight[ans_id_9500]
             new_answer_bias[label] = ans_bias[ans_id_9500]
@@ -138,8 +148,12 @@ def load_lxmert_qa(path, model, label2ans):
             unload += 1
     print("Loaded %d answers from LXRTQA pre-training and %d not" % (loaded, unload))
     print()
-    answer_state_dict['logit_fc.3.weight'] = new_answer_weight
-    answer_state_dict['logit_fc.3.bias'] = new_answer_bias
+    if qa_with_dropout:
+        answer_state_dict['logit_fc.5.weight'] = new_answer_weight
+        answer_state_dict['logit_fc.5.bias'] = new_answer_bias
+    else:
+        answer_state_dict['logit_fc.3.weight'] = new_answer_weight
+        answer_state_dict['logit_fc.3.bias'] = new_answer_bias
 
     # Load Bert Weights
     bert_model_keys = set(model.lxrt_encoder.model.state_dict().keys())

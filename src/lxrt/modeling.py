@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright 2019 project LXRT.
 # Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
 # Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
@@ -27,11 +26,16 @@ import tempfile
 import sys
 from io import open
 
+import numpy as np
+from sklearn.metrics import accuracy_score
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, SmoothL1Loss
 
 from .file_utils import cached_path
+
+###from param import args
+from torchmetrics import Accuracy, ConfusionMatrix
 
 logger = logging.getLogger(__name__)
 
@@ -139,35 +143,39 @@ ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
 
 
 class VisualConfig(object):
+    #VISUAL_LOSSES = ['obj', 'attr', 'feat', 'pos']
     VISUAL_LOSSES = ['obj', 'attr', 'feat']
+
     def __init__(self,
                  l_layers=12,
                  x_layers=5,
-                 r_layers=0):
+                 r_layers=0, 
+                 set_visual_dims=None, weights=1/0.15):
         self.l_layers = l_layers
         self.x_layers = x_layers
         self.r_layers = r_layers
 
         self.visual_feat_dim = 2048
-        self.visual_pos_dim = 4
+        self.visual_pos_dim = set_visual_dims
 
         self.obj_id_num = 1600
         self.attr_id_num = 400
 
         self.visual_losses = self.VISUAL_LOSSES
         self.visual_loss_config = {
-            'obj': (self.obj_id_num, 'ce', (-1,), 1/0.15),
-            'attr': (self.attr_id_num, 'ce', (-1,), 1/0.15),
-            'feat': (2048, 'l2', (-1, 2048), 1/0.15),
+            'obj': (self.obj_id_num, 'ce', (-1,), weights),
+            'attr': (self.attr_id_num, 'ce', (-1,), weights),
+            'feat': (2048, 'l2', (-1, 2048), weights),
+            #'pos': (self.visual_pos_dim, 'l2', (-1, self.visual_pos_dim), 1/0.15*1000)
         }
 
     def set_visual_dims(self, feat_dim, pos_dim):
         self.visual_feat_dim = feat_dim
         self.visual_pos_dim = pos_dim
+        print("visual_pos_dim not set properly")
 
-
-VISUAL_CONFIG = VisualConfig()
-
+###VISUAL_CONFIG = VisualConfig(set_visual_dims=args.visual_pos_dim)
+VISUAL_CONFIG = VisualConfig(set_visual_dims=5)
 
 class BertConfig(object):
     """Configuration class to store the configuration of a `BertModel`.
@@ -489,10 +497,12 @@ class LXRTXLayer(nn.Module):
 
 
 class VisualFeatEncoder(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, visual_pos_dim=4):
         super().__init__()
         feat_dim = VISUAL_CONFIG.visual_feat_dim
-        pos_dim = VISUAL_CONFIG.visual_pos_dim
+        #pos_dim = VISUAL_CONFIG.visual_pos_dim
+        pos_dim = visual_pos_dim
+        print("VisualFeatEncoder pos_dim", pos_dim)
 
         # Object feature encoding
         self.visn_fc = nn.Linear(feat_dim, config.hidden_size)
@@ -506,6 +516,7 @@ class VisualFeatEncoder(nn.Module):
 
     def forward(self, visn_input):
         feats, boxes = visn_input
+        #print("VisualFeatEncoder forward boxes", boxes.shape, type(boxes), boxes.type())
 
         x = self.visn_fc(feats)
         x = self.visn_layer_norm(x)
@@ -518,11 +529,11 @@ class VisualFeatEncoder(nn.Module):
 
 
 class LXRTEncoder(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, visual_pos_dim=4):
         super().__init__()
 
         # Obj-level image embedding layer
-        self.visn_fc = VisualFeatEncoder(config)
+        self.visn_fc = VisualFeatEncoder(config, visual_pos_dim)
 
         # Number of layers
         self.num_l_layers = VISUAL_CONFIG.l_layers
@@ -549,7 +560,7 @@ class LXRTEncoder(nn.Module):
         # Note: Word embedding layer was executed outside this module.
         #       Keep this design to allow loading BERT weights.
         visn_feats = self.visn_fc(visn_feats)
-
+        #import pdb;pdb.set_trace()
         # Run language layers
         for layer_module in self.layer:
             lang_feats = layer_module(lang_feats, lang_attention_mask)
@@ -618,15 +629,35 @@ class BertLMPredictionHead(nn.Module):
 
 
 class BertVisualAnswerHead(nn.Module):
-    def __init__(self, config, num_answers):
+    def __init__(self, config, num_answers, gqa_dropout_rate):
         super().__init__()
         hid_dim = config.hidden_size
-        self.logit_fc = nn.Sequential(
-            nn.Linear(hid_dim, hid_dim * 2),
-            GeLU(),
-            BertLayerNorm(hid_dim * 2, eps=1e-12),
-            nn.Linear(hid_dim * 2, num_answers)
-        )
+        #self.logit_fc = nn.Sequential(
+        #    nn.Linear(hid_dim, hid_dim * 2),
+        #    GeLU(),
+        #    BertLayerNorm(hid_dim * 2, eps=1e-12),
+        #    nn.Linear(hid_dim * 2, num_answers)
+        #)
+
+        if gqa_dropout_rate > 0.0:
+            print("VA with Dropout", gqa_dropout_rate)
+            self.logit_fc = nn.Sequential(
+                nn.Dropout(p=gqa_dropout_rate),
+                nn.Linear(hid_dim, hid_dim * 2),
+                GeLU(),
+                BertLayerNorm(hid_dim * 2, eps=1e-12),
+                nn.Dropout(p=gqa_dropout_rate),
+                nn.Linear(hid_dim * 2, num_answers)
+            )
+        else:
+            print("VA without Dropout") 
+            self.logit_fc = nn.Sequential(
+                nn.Linear(hid_dim, hid_dim * 2),
+                GeLU(),
+                BertLayerNorm(hid_dim * 2, eps=1e-12),
+                nn.Linear(hid_dim * 2, num_answers)
+            )
+
 
     def forward(self, hidden_states):
         return self.logit_fc(hidden_states)
@@ -655,6 +686,42 @@ class BertVisualObjHead(nn.Module):
         output = {}
         for key in self.visual_losses:
             output[key] = self.decoder_dict[key](hidden_states)
+        return output
+
+class BertVisualPIHead(nn.Module):
+    """Visual Positional Information Head."""
+
+    def __init__(self, config, pi_dropout_rate=0.0):
+        super().__init__()
+        self.transform = BertPredictionHeadTransform(config)
+        self.dropout = nn.Dropout(p=pi_dropout_rate) 
+        self.conv1x1 = nn.Conv2d(in_channels=config.hidden_size * 2, out_channels=9, kernel_size=1, stride=1)
+
+
+    def forward(self, hidden_states):
+        """
+        Args:
+            hidden_states (:obj:`tuple(torch.FloatTensor)`:
+                Tuple of :obj:`torch.FloatTensor` of shape :obj:`(batch_size, num_objs, hidden_size)`. 
+                
+        Returns:
+            output (:obj:`tuple(torch.FloatTensor)`:
+                Tuple of :obj:`torch.FloatTensor` of shape :obj:`(batch_size, num_classes)`, where num_classes is 
+                11664 (i.e. 9*36*36)
+        """
+        # Apply Linear Layer (like in all other LXMERT Heads)
+        hidden_states = self.transform(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+
+        # Unsqueeze, Repeat, Concat, and Permute --- hidden_states torch.Size([1, 36, 768])
+        num_obs=36
+        x1, x2 = hidden_states.unsqueeze(1), hidden_states.unsqueeze(2) # torch.Size([1, 1, 36, 768]), torch.Size([1, 36, 1, 768])
+        x1, x2 = x1.repeat(1,num_obs,1,1), x2.repeat(1,1,num_obs,1) #  torch.Size([1, 36, 36, 768]) torch.Size([1, 36, 36, 768])
+        x = torch.cat((x1, x2), axis=3) # torch.Size([1, 36, 36, 1536])
+        x = x.permute(0, 3, 1, 2) # torch.Size([1, 1536, 36, 36])
+
+        output = self.conv1x1(x) # torch.Size([1, 9, 36, 36])
+        output = torch.flatten(output, 1) # flatten all dimensions except the batch dimension # torch.Size([1, 11664])
         return output
 
 
@@ -769,6 +836,7 @@ class BertPreTrainedModel(nn.Module):
             with tarfile.open(resolved_archive_file, 'r:gz') as archive:
                 archive.extractall(tempdir)
             serialization_dir = tempdir
+        #torch.distributed.barrier()
         # Load config
         config_file = os.path.join(serialization_dir, CONFIG_NAME)
         config = BertConfig.from_json_file(config_file)
@@ -835,10 +903,10 @@ class BertPreTrainedModel(nn.Module):
 class LXRTModel(BertPreTrainedModel):
     """LXRT Model."""
 
-    def __init__(self, config):
+    def __init__(self, config, visual_pos_dim=4):
         super().__init__(config)
         self.embeddings = BertEmbeddings(config)
-        self.encoder = LXRTEncoder(config)
+        self.encoder = LXRTEncoder(config, visual_pos_dim)
         self.pooler = BertPooler(config)
         self.apply(self.init_bert_weights)
 
@@ -894,10 +962,21 @@ class LXRTPretraining(BertPreTrainedModel):
                  task_obj_predict=True,
                  visual_losses='',
                  task_qa=True,
-                 num_answers=2):
+                 num_answers=2,
+                 visual_pos_dim=4,
+                 task_pi_aux=False,
+                 gqa_dropout_rate=0.0,
+                 pi_dropout_rate=0.0,
+                 pi_aux_weight=None,
+                pi_loss_only=False,
+                downscale_other_losses_but_pi=False,
+                cmm_extra_weight=1.0):
+
         super().__init__(config)
         # Configuration
         self.config = config
+        #self.config['visual_pos_dim'] = visual_pos_dim
+        print("CONFIG--->", config)
         self.num_answers = num_answers
 
         # Use of pre-training tasks
@@ -905,28 +984,41 @@ class LXRTPretraining(BertPreTrainedModel):
         self.task_obj_predict = task_obj_predict
         self.task_matched = task_matched
         self.task_qa = task_qa
+        self.task_pi_aux = task_pi_aux
+        self.pi_aux_weight = pi_aux_weight
+        self.gqa_dropout_rate= gqa_dropout_rate
+        self.pi_dropout_rate= pi_dropout_rate
+        self.pi_loss_only= pi_loss_only
+        if downscale_other_losses_but_pi:
+            self.extra_weight = 0.0001
+        else:
+            self.extra_weight = 1.0
+        self.cmm_extra_weight = cmm_extra_weight
 
         # LXRT backbone
-        self.bert = LXRTModel(config)
+        self.bert = LXRTModel(config, visual_pos_dim)
 
         # Pre-training heads
         self.cls = BertPreTrainingHeads(config, self.bert.embeddings.word_embeddings.weight)
         if self.task_obj_predict:
             self.obj_predict_head = BertVisualObjHead(config, visual_losses)
         if self.task_qa:
-            self.answer_head = BertVisualAnswerHead(config, self.num_answers)
+            self.answer_head = BertVisualAnswerHead(config, self.num_answers, gqa_dropout_rate=gqa_dropout_rate)
+        if self.task_pi_aux:
+            self.pi_head = BertVisualPIHead(config, pi_dropout_rate=pi_dropout_rate)
 
         # Weight initialization
         self.apply(self.init_bert_weights)
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, masked_lm_labels=None,
-                visual_feats=None, pos=None, obj_labels=None, matched_label=None, ans=None):
+                visual_feats=None, pos=None, obj_labels=None, matched_label=None, ans=None, pi_labels=None):
         (lang_output, visn_output), pooled_output = self.bert(
             input_ids, token_type_ids, attention_mask,
             visual_feats=(visual_feats, pos),
         )
 
         lang_prediction_scores, cross_relationship_score = self.cls(lang_output, pooled_output)
+        #import pdb; pdb.set_trace()
         if self.task_qa:
             answer_score = self.answer_head(pooled_output)
         else:
@@ -941,14 +1033,14 @@ class LXRTPretraining(BertPreTrainedModel):
             masked_lm_loss = loss_fct(
                 lang_prediction_scores.view(-1, self.config.vocab_size),
                 masked_lm_labels.view(-1)
-            )
+            ) * self.extra_weight
             total_loss += masked_lm_loss
             losses += (masked_lm_loss.detach(),)
         if matched_label is not None and self.task_matched:
             matched_loss = loss_fct(
                 cross_relationship_score.view(-1, 2),
                 matched_label.view(-1)
-            )
+            ) * self.extra_weight * self.cmm_extra_weight
             total_loss += matched_loss
             losses += (matched_loss.detach(),)
         if obj_labels is not None and self.task_obj_predict:
@@ -958,6 +1050,7 @@ class LXRTPretraining(BertPreTrainedModel):
             }
             total_visn_loss = 0.
             visn_prediction_scores_dict = self.obj_predict_head(visn_output)
+            #import pdb;pdb.set_trace()
             for key in VISUAL_CONFIG.visual_losses:
                 label, mask_conf = obj_labels[key]
                 output_dim, loss_fct_name, label_shape, weight = VISUAL_CONFIG.visual_loss_config[key]
@@ -969,7 +1062,7 @@ class LXRTPretraining(BertPreTrainedModel):
                 )
                 if visn_loss.dim() > 1:     # Regression Losses
                     visn_loss = visn_loss.mean(1)
-                visn_loss = (visn_loss * mask_conf.view(-1)).mean() * weight
+                visn_loss = (visn_loss * mask_conf.view(-1)).mean() * weight * self.extra_weight
                 total_visn_loss += visn_loss
                 losses += (visn_loss.detach(),)
             total_loss += total_visn_loss
@@ -977,7 +1070,7 @@ class LXRTPretraining(BertPreTrainedModel):
             answer_loss = loss_fct(
                 answer_score.view(-1, self.num_answers),
                 ans.view(-1)
-            )  
+            ) * self.extra_weight
             # Since this Github version pre-trains with QA loss from the beginning,
             # I exclude "*2" here to match the effect of QA losses.
             # Previous: (loss *0) for 6 epochs, (loss *2) for 6 epochs.   (Used 10 instead of 6 in EMNLP paper)
@@ -986,21 +1079,72 @@ class LXRTPretraining(BertPreTrainedModel):
             # * 2       # Multiply by 2 because > half of the data will not have label
             total_loss += answer_loss
             losses += (answer_loss.detach(),)
-        return total_loss, torch.stack(losses).unsqueeze(0), answer_score.detach()
+           
+            
+        if self.task_pi_aux:
+            # Permute and flatten targets
+            #import pdb; pdb.set_trace()
+            #print(type(pi_labels))
+            #print(pi_labels.shape)
+            #print("")
+            #print("1:", pi_labels.device)
+            pi_labels = pi_labels.float() #type(torch.FloatTensor)
+            #print("2:", pi_labels.device)
+            #assert list(pi_labels.shape[1:]) == [36, 36, 9], "Shapes does not match"
+            pi_labels = pi_labels.permute(0, 3, 1, 2)
+            #print("3:", pi_labels.device)
+            pi_labels = torch.flatten(pi_labels, 1) # flatten all dimensions except the batch dimension
+            #print("4:", pi_labels.device)
+            #assert list(labels.shape[1:]) == [11664], "Shapes does not match"
 
+            criterion = torch.nn.BCEWithLogitsLoss()
+            pi_scores = self.pi_head(visn_output) # torch.Size([1, 11664])
+            pi_loss = criterion(pi_scores, pi_labels) 
+            
+            #import pdb; pdb.set_trace()
+            pi_loss = self.pi_aux_weight * pi_loss
+            total_loss += pi_loss
+            losses += (pi_loss.detach(),)
+            
+            if self.pi_loss_only:
+                total_loss = pi_loss
+                losses = ()
+                losses += (pi_loss.detach(),)
+            # Calc acc of each class
+            #n_classif = pi_scores.shape[1]
+            #act = nn.Sigmoid()
+            #pi_labels_pred = (act(pi_scores) > .5).float()
+            #acc_res = np.ones(n_classif) * -1
+            #for i in range(n_classif):
+            #    acc_res[i] = accuracy_score(pi_labels[:,i].cpu().detach().numpy() , pi_labels_pred[:,i].cpu().detach().numpy() )
+        else:
+            pi_scores = None
+         
+        #print("x+x+x+x+x++x+x+x+x+")
+        #print(pi_scores.shape, pi_labels.shape)
+        #print(cross_relationship_score.shape, matched_label.shape)
+        #import pdb; pdb.set_trace()
+        
+        if self.task_qa:
+            return total_loss, torch.stack(losses).unsqueeze(0), answer_score.detach(), {'pi_scores': pi_scores.detach(), 'pi_labels': pi_labels.detach(), 
+                'answer_score': answer_score.view(-1, self.num_answers), 'ans': ans.view(-1), 
+                'cmm_scores': cross_relationship_score.detach(), 'cmm_labels': matched_label.detach(), 'cross_relationship_score': cross_relationship_score}
+        else:
+            return total_loss, torch.stack(losses).unsqueeze(0), answer_score.detach(), {'pi_scores': pi_scores.detach(), 'pi_labels': pi_labels.detach(), 'ans': 0, 
+                'cmm_scores': cross_relationship_score.detach(), 'cmm_labels': matched_label.detach(), 'cross_relationship_score': cross_relationship_score}
 
 class LXRTFeatureExtraction(BertPreTrainedModel):
     """
     BERT model for classification.
     """
-    def __init__(self, config, mode='lxr'):
+    def __init__(self, config, mode='lxr', visual_pos_dim=4):
         """
 
         :param config:
         :param mode:  Number of visual layers
         """
         super().__init__(config)
-        self.bert = LXRTModel(config)
+        self.bert = LXRTModel(config, visual_pos_dim)
         self.mode = mode
         self.apply(self.init_bert_weights)
 
