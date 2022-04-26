@@ -1,10 +1,11 @@
-# README
+# Probing the Role of Positional Information in Vision-Language Models
 
-In "Probing the Role of Positional Information in Vision-Language Models" we evaluate LXMERT models with different positional information input types using two probing and a downstream task. Later we add two new pre-training strategies (based on the probs) and report results for all experiments.
+In "Probing the Role of Positional Information in Vision-Language Models" we evaluate LXMERT models with different positional information (PI) input types using two probing and a downstream task. Later we add two new pre-training strategies (based on the probs) and report results for all experiments.
+
 
 ## Overview
 
-This repository is a fork of [https://github.com/airsplay/lxmert/](https://github.com/airsplay/lxmert/).
+This repository is a fork of [https://github.com/airsplay/lxmert/](https://github.com/airsplay/lxmert/). The analysis is based on [LXMERT](https://aclanthology.org/D19-1514.pdf).
 
 * Source code is stored in `src`.
 * Files to start training in `run`.
@@ -15,12 +16,14 @@ This repository is a fork of [https://github.com/airsplay/lxmert/](https://githu
 ## Preparation
 
 * Please download the data as described [here](https://github.com/airsplay/lxmert/#gqa) and [here](https://github.com/airsplay/lxmert/#pre-training).
-* Add the depth information and 9 MPE labels using `data/depth/README.md`.
+* Add the Depth Information and 9 Mutual Positions labels using `data/depth/README.md`.
 * Consider using following Docker container:
 
 ```
-docker run -it --gpus all --name plxmert -v plxmert:/root/plxmert/ nvcr.io/nvidia/pytorch:20.03-py3 bash
+docker run -it --gpus all --ipc=host --name plxmert -v plxmert:/root/plxmert/ nvcr.io/nvidia/pytorch:20.03-py3 bash
 ```
+
+
 
 
 ## Experiments 
@@ -28,15 +31,15 @@ docker run -it --gpus all --name plxmert -v plxmert:/root/plxmert/ nvcr.io/nvidi
 Set parameters:
 
 ```
-N_GPUS=8 		# 8 GPUs for pre-training
-GPU_NUMBER=0	# 1 GPU for fine-tuning
-EXPERIMENT_NAME = myLxmerdt
+N_GPUS=8 	# 8 GPUs for pre-training (takes about 41 hours)
+GPU_NUMBER=0 	# 1 GPU for fine-tuning (takes about 11 hours)
+EXPERIMENT_NAME = mylxmert 
 ```
 
 
 ### Pre-training
 
-Pre-training for plain and our version with different positional information input type. Models are stored in `snap/`.
+Pre-training for original and our version with different positional information input types. Models are stored in `snap/`.
 
 ```
 bash run/plxmert_pretrain.bash $N_GPUS $EXPERIMENT_NAME ARGS
@@ -44,17 +47,17 @@ bash run/plxmert_pretrain.bash $N_GPUS $EXPERIMENT_NAME ARGS
 
 `ARGS`:
 
-* `--report_cmm_acc` for plain version.
+* `--report_cmm_acc` for original version.
 * `--task_pi_cl_cmm` and `--pi_aux_weight 10` for our version.
 * `PI_INPUT_TYPE`: Add `--nopi` (no positional information), `--use_center` (x,y), `--use_bb` (x1,y1,x2,y2), or `--use_bb --use_d_med` (x1,y1,x2,y2,d).
 
 
 ### Mutual Position Evaluation (MPE)
 
-Fine-tuning of PI head for MPE of 11k classification tasks for plain version. In our version this is done during pre-training.
+Fine-tuning of PI head for MPE of 11k classification tasks for original version. In our version this is done during pre-training.
 
 ```
-bash run/plxmert_mpe.bash $GPU_NUMBER $EXPERIMENT_NAME --loadLXMERT snap/pretrain/$(EXPERIMENT_NAME)/BEST_EVAL_LOSS PI_INPUT_TYPE
+bash run/lxmert_mpe.bash $GPU_NUMBER $EXPERIMENT_NAME --loadLXMERT snap/pretrain/$(EXPERIMENT_NAME)/BEST_EVAL_LOSS PI_INPUT_TYPE
 ```
 
 
@@ -63,10 +66,10 @@ bash run/plxmert_mpe.bash $GPU_NUMBER $EXPERIMENT_NAME --loadLXMERT snap/pretrai
 Evaluation of PI using cross-modality matching (CMM). 
 
 ```
-bash run/plxmert_ce.bash $EXPERIMENT_NAME --valid DATA $PI_INPUT_TYPE --loadLXMERT snap/pretrain/$(EXPERIMENT_NAME)/BEST_EVAL_LOSS --matching_prob X 
+bash run/lxmert_ce.bash $EXPERIMENT_NAME --valid DATA $PI_INPUT_TYPE --loadLXMERT snap/pretrain/$(EXPERIMENT_NAME)/BEST_EVAL_LOSS --matching_prob X 
 ```
 
-* `X`: 0.5 for original LXMERT evaluation, `1` to permute all caption to a given image, or 0 not to permute caption.
+* `X`: 0.5 for original LXMERT evaluation, `1` to permute all captions to a given image, or 0 not to permute captions.
 * `DATA`: e.g. `mscoco_minival`
 
 
@@ -74,8 +77,26 @@ bash run/plxmert_ce.bash $EXPERIMENT_NAME --valid DATA $PI_INPUT_TYPE --loadLXME
 
 ### Downstream Task Evaluation
 
-Downstream task using GQA. Also report test subsets.
+Downstream task using GQA. This also reports test subsets.
 
 ```
-bash run/plxmert_gqa.bash $GPU_NUMBER $EXPERIMENT_NAME snap/pretrain/$(EXPERIMENT_NAME)/BEST_EVAL_LOSS PI_INPUT_TYPE 
+bash run/lxmert_gqa.bash $GPU_NUMBER $EXPERIMENT_NAME snap/pretrain/$(EXPERIMENT_NAME)/BEST_EVAL_LOSS PI_INPUT_TYPE 
 ```
+
+
+## Checkpoints
+
+You can download pre-trained models with CE (`--task_pi_cl_cmm --pi_aux_weight 10`): 
+
+* [`lxmert_nopi_ce`](https://drive.google.com/drive/folders/10DbTnZpGSuHsYWgA0j0HIwQAC1ZOaNfH?usp=sharing) (no positional information),
+ [`lxmert_xy_ce`](https://drive.google.com/drive/folders/1a3HUDYYLFMfKtBUey84Q-PjK-wFrtztp?usp=sharing) (`--use_center`),
+ [`lxmert_x1y1x2y2_ce`](https://drive.google.com/drive/folders/1LlD0rGrzZYkdKAzwQgnwO6IHLJRpInCN?usp=sharing) (`--use_bb`),
+ [`lxmert_x1y1x2y2d_ce`](https://drive.google.com/drive/folders/1kr1J1HD1hxjtQhuc1xrUIEjBVLlxFQit?usp=sharing) (`--use_bb --use_d_med`). 
+
+You can download pre-trained models without CE : 
+
+* [Will be uploaded soon]
+
+
+Place the models at `snap/pretrain/$(EXPERIMENT_NAME)/BEST_EVAL_LOSS_LXRT.pth`
+
