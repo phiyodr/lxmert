@@ -86,16 +86,12 @@ bash run/lxmert_gqa.bash $GPU_NUMBER $EXPERIMENT_NAME snap/pretrain/$(EXPERIMENT
 
 ## Checkpoints
 
-You can download pre-trained models with CE (`--task_pi_cl_cmm --pi_aux_weight 10`): 
+You can download pre-trained models:
 
-* [`lxmert_nopi_ce`](https://drive.google.com/drive/folders/10DbTnZpGSuHsYWgA0j0HIwQAC1ZOaNfH?usp=sharing) (no positional information),
- [`lxmert_xy_ce`](https://drive.google.com/drive/folders/1a3HUDYYLFMfKtBUey84Q-PjK-wFrtztp?usp=sharing) (`--use_center`),
- [`lxmert_x1y1x2y2_ce`](https://drive.google.com/drive/folders/1LlD0rGrzZYkdKAzwQgnwO6IHLJRpInCN?usp=sharing) (`--use_bb`),
- [`lxmert_x1y1x2y2d_ce`](https://drive.google.com/drive/folders/1kr1J1HD1hxjtQhuc1xrUIEjBVLlxFQit?usp=sharing) (`--use_bb --use_d_med`). 
-
-You can download pre-trained models without CE : 
-
-* [Will be uploaded soon]
+|                 | No positional information                                                                                   | `--use_center`                                                                                            | `--use_bb`                                                                                                      | `--use_bb --use_d_med`                                                                                           |
+|-----------------|-------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|
+| Plain LXMERT    | [`lxmert_nopi`](https://drive.google.com/file/d/1AD3zpUYQL3gT8ycXRIK27F0gy1W4i_dJ/view?usp=sharing)                                                    | [`lxmert_xy`](https://drive.google.com/file/d/1bAE9j0dmuhRCUMRI6LDRveEcKgbamFxU/view?usp=sharing)                                                            | [`lxmert_x1y1x2y2`](https://drive.google.com/file/d/1KFJni4TREYbp0J0B52bAYKYwtfsm2oFS/view?usp=sharing)                                        | [`lxmert_x1y1x2y2d_`](https://drive.google.com/file/d/1nwJ6yUS157a5we4U9VPO55cSyN1gNLGi/view?usp=sharing)                                       |
+| With PIP and CL | [`lxmert_nopi_pipcl`](https://drive.google.com/drive/folders/10DbTnZpGSuHsYWgA0j0HIwQAC1ZOaNfH?usp=sharing) | [`lxmert_xy_pipcl`](https://drive.google.com/drive/folders/1a3HUDYYLFMfKtBUey84Q-PjK-wFrtztp?usp=sharing) | [`lxmert_x1y1x2y2_pipcl`](https://drive.google.com/drive/folders/1LlD0rGrzZYkdKAzwQgnwO6IHLJRpInCN?usp=sharing) | [`lxmert_x1y1x2y2d_pipcl`](https://drive.google.com/drive/folders/1kr1J1HD1hxjtQhuc1xrUIEjBVLlxFQit?usp=sharing) |
 
 
 Place the models at `snap/pretrain/$(EXPERIMENT_NAME)/BEST_EVAL_LOSS_LXRT.pth`
