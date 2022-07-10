@@ -1,5 +1,7 @@
 # Probing the Role of Positional Information in Vision-Language Models
 
+All details: [https://www.unibw.de/vis-en/naacl2022](https://www.unibw.de/vis-en/naacl2022)
+
 In "Probing the Role of Positional Information in Vision-Language Models" we evaluate LXMERT models with different positional information (PI) input types using two probing and a downstream task. Later we add two new pre-training strategies (based on the probs) and report results for all experiments.
 
 
