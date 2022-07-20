@@ -4,6 +4,21 @@ All details: [https://www.unibw.de/vis-en/naacl2022](https://www.unibw.de/vis-en
 
 In "Probing the Role of Positional Information in Vision-Language Models" we evaluate LXMERT models with different positional information (PI) input types using two probing and a downstream task. Later we add two new pre-training strategies (based on the probs) and report results for all experiments.
 
+```
+@inproceedings{rosch-libovicky-2022-probing,
+    title = "Probing the Role of Positional Information in Vision-Language Models",
+    author = {R{\"o}sch, Philipp J.  and
+      Libovick{\'y}, Jind{\v{r}}ich},
+    booktitle = "Findings of the Association for Computational Linguistics: NAACL 2022",
+    month = jul,
+    year = "2022",
+    address = "Seattle, United States",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2022.findings-naacl.77",
+    pages = "1031--1041",
+    abstract = "In most Vision-Language models (VL), the understanding of the image structure is enabled by injecting the position information (PI) about objects in the image. In our case study of LXMERT, a state-of-the-art VL model, we probe the use of the PI in the representation and study its effect on Visual Question Answering. We show that the model is not capable of leveraging the PI for the image-text matching task on a challenge set where only position differs. Yet, our experiments with probing confirm that the PI is indeed present in the representation. We introduce two strategies to tackle this: (i) Positional Information Pre-training and (ii) Contrastive Learning on PI using Cross-Modality Matching. Doing so, the model can correctly classify if images with detailed PI statements match. Additionally to the 2D information from bounding boxes, we introduce the object{'}s depth as new feature for a better object localization in the space. Even though we were able to improve the model properties as defined by our probes, it only has a negligible effect on the downstream performance. Our results thus highlight an important issue of multimodal modeling: the mere presence of information detectable by a probing classifier is not a guarantee that the information is available in a cross-modal setup.",
+}
+```
 
 ## Overview
 
